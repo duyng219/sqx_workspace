@@ -7,6 +7,8 @@
 //|    Backtested on EURUSD_M1_dukas_M1_UTCPlus02 / H1, 2010.01.02 - 2020.08.02 
 //+------------------------------------------------------------------+
 
+// ===== [1] PROPERTIES & INCLUDES =====
+
 #property copyright "StrategyQuant.com"
 #property link      "http://www.StrategyQuant.com"    
 #property strict
@@ -65,6 +67,8 @@
 #include <MovingAverages.mqh>
 #include <Generic\HashMap.mqh>
 
+// ===== [2] GLOBAL CONSTANTS (SL/PT types, expiration codes) =====
+
 const int SLPTTYPE_RANGE = 0;
 const int SLPTTYPE_LEVEL = 1;
 
@@ -73,12 +77,16 @@ const int EXPIRATION_TODAY = 2;
 const int EXPIRATION_SPECIFIED = 4;
 const int EXPIRATION_SPECIFIED_DAY = 8;
 
+// ===== [3] ORDER FILLING PREFERENCES =====
+
 input ENUM_ORDER_TYPE_FILLING preferredFillingType = ORDER_FILLING_FOK;         // Preferred filling type - will be applied if available
 input bool forceFillingType = false;                                            // If set to true, it will force using preferredFillingType when opening orders
 
 //+------------------------------------------------------------------+
 // -- Variables
 //+------------------------------------------------------------------+
+
+// ===== [4] STRATEGY INPUTS & STATE FLAGS =====
 
 input string CustomComment = "Strategy_0_2442";
 bool IndicatorLoadedWithoutError = true;
@@ -99,6 +107,9 @@ input double TrailingActCef1 = 2.1;        //TrailingActCef1
 //+------------------------------------------------------------------+
 // Money Management variables
 //+------------------------------------------------------------------+
+
+// ===== [5] MONEY MANAGEMENT =====
+
 input string smm = "----------- Money Management - Risk Fixed % Of Balance -----------";
 input bool UseMoneyManagement = true;
 input double mmRiskPercent = 5.0;
@@ -118,6 +129,8 @@ input double InitialCapital = 10000; //InitialCapital (0 means whole account bal
 //+------------------------------------------------------------------+
 // Trading Options variables
 //+------------------------------------------------------------------+
+
+// ===== [6] TRADING OPTIONS / POLICY GATES =====
 
 input string sdtw = "----------- Dont Trade On Weekends -----------";
 input bool DontTradeOnWeekends = false;
@@ -159,6 +172,8 @@ input string slts = "----------- Use Tick size from SQ (for CFDs) -----------";
 // use the correct tick size          
 input bool UseSQTickSize = false; // UseSQPipSize                                                               
 input double MainChartTickSizeSQ = 1.0E-4; //MainChartPipSizeSQ
+
+// ===== [7] SQX ENGINE SETTINGS (slippage, retries, tick size overrides) =====
 
 //+------------------------------------------------------------------+
 // -- SQ Variables
@@ -212,6 +227,9 @@ color sqLabelColor = clrWhite;
 double initialBalance = 0;
 
 ////////
+
+// ===== [8] INDICATORS & HANDLES =====
+
 int indicatorHandles[];
 
 //Indicator buffer indexes definitions
@@ -223,7 +241,11 @@ int indicatorHandles[];
 #define ATR_4 5     //iCustom(NULL, 0, "SqATR", 55)
 #define HEIKENASHI_1 6     //255
 
+// ===== [9] SESSION/INTRADAY SUPPORT =====
+
 CHashMap<string, int> sessionOHLCHandles;
+
+// ===== [10] TRADE STATE STRUCTS (last trades, exit levels) =====
 
 struct LastClosedTrade {
    string symbol;
@@ -257,6 +279,8 @@ struct OrderExitLevel {
 
 OrderExitLevel orderExits[10];
 
+// ===== [11] CORE MARKET/TRADE BUFFERS =====
+
 MqlTradeRequest mrequest;  // Used for sending our trade requests
 MqlTradeResult mresult;    // Used to get our trade results
 MqlRates mrate[];          // Used to store the prices, volumes and spread of each bar
@@ -284,10 +308,14 @@ bool timerInitialized = false;
 // -- Functions
 //+------------------------------------------------------------------+
 
+// ===== [12] LIFECYCLE & MAIN FLOW =====
+
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
 void OnTick() {
+
+   // --- [12.1] OnTick: signals on bar open, entries, and per-bar management ---
 
    //--- Do we have enough bars to work with?
    if(Bars(_Symbol,_Period) < minBars) {   // if total bars is less than minBars
@@ -486,6 +514,9 @@ if (_sqIsBarOpen == true) {
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit(){
+
+   // --- [12.2] OnInit: init comments, indicators, timer, panel, capital ---
+
    VerboseLog("--------------------------------------------------------");
    VerboseLog("Starting the EA");
 
@@ -551,7 +582,9 @@ int OnInit(){
 //| Expert deinitialization function                                 |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason) {
-  
+
+   // --- [12.3] OnDeinit: panel/report cleanup & object disposal ---
+
    sqDeinitInfoPanel();
   
                                     
@@ -595,6 +628,9 @@ void initTimer(){
 //+------------------------------------------------------------------+
 
 void OnTimer(){
+
+   // --- [12.4] OnTimer: housekeeping for global variables (orphan cleanup) ---
+
    //clear unused variables
    int deletedCount = 0;
    
@@ -642,6 +678,8 @@ void OnTimer(){
 }
 
 //+------------------------------------------------------------------+
+
+// ===== [13] TRADING OPTIONS GATE (weekends/EOD/Friday/time range/max distance/max trades/minmax SLPT) =====
 
 bool sqHandleTradingOptions() {
    bool continueWithBarUpdate = true;
@@ -755,6 +793,8 @@ int getLastTradeIndex(string symbol, int magicNo){
 }
    
 //+------------------------------------------------------------------+
+
+// ===== [14] INDICATOR INITIALIZATION =====
 
 bool initIndicators(){
    
@@ -881,7 +921,9 @@ bool sqIsExpression(string id) {
 }
   
 //+------------------------------------------------------------------+
-    
+
+// ===== [16] POSITION MANAGEMENT (BE, Trailing, ExitAfterBars, Expirations) =====
+
 void sqManagePositions(int magicNo) {
    if(_sqIsBarOpen){
      for (int cc = PositionsTotal() - 1; cc >= 0; cc--) {
@@ -938,6 +980,8 @@ void checkBarOpen(){
 }
 
 //+------------------------------------------------------------------+
+
+// ===== [15] INDICATOR HELPERS (cross, change, rising/falling patterns) =====
 
 bool indyCrossesAbove(uchar indyIndex1, uchar indyIndex2, int shift1, int shift2, int bufferIndex1=0, int bufferIndex2=0) {
    double buffer1[], buffer2[];
